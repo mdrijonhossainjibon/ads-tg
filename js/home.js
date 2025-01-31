@@ -14,6 +14,11 @@ let user = {
     lastWatchTime: null
 };
 
+
+show_8863238();
+
+
+ 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     tg.ready();
