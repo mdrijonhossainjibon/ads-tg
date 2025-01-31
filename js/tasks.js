@@ -1,10 +1,10 @@
 // Initialize Telegram WebApp
-const webApp = window.Telegram.WebApp;
-webApp.ready();
+const tg = window.Telegram.WebApp;
+tg.ready();
 
 // Set user name in header
 const headerUserName = document.getElementById('header-user-name');
-headerUserName.textContent = webApp.initDataUnsafe.user?.username || 'User';
+headerUserName.textContent = tg.initDataUnsafe?.user?.username || 'User';
 
 // Task definitions
 const tasks = {
@@ -83,7 +83,7 @@ function updateTaskProgress(taskId, progress) {
 function createTaskElement(task) {
     const progress = Math.min((task.current / task.target) * 100, 100);
     return `
-        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onclick="show_8863238()">
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" data-task-id="${task.id}" onclick="startTask('${task.id}')">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-${task.iconBg}-500/20 flex items-center justify-center">
@@ -145,7 +145,7 @@ function updateResetTime() {
 
 // Show notification
 function showNotification(title, message) {
-    webApp.showPopup({
+    tg.showPopup({
         title: title,
         message: message,
         buttons: [{type: 'ok'}]
@@ -169,72 +169,264 @@ function checkTaskReset() {
     }
 }
 
-// Ad watching functionality
-let autoAdInterval;
-let isAutoAdRunning = false;
+// Global variables for ad handling
+let adCheckInterval = null;
+let adTimeout = null;
+let isAdPlaying = false;
+let currentTaskId = null;
+let backButtonCount = 0;
 
-function watchAd() {
-    webApp.showPopup({
-        title: 'Watching Ad',
-        message: 'You earned 0.5 points!',
-        buttons: [{type: 'ok'}]
+function initAdHandling() {
+    // Listen for clicks on ad elements
+    document.addEventListener('click', function(e) {
+        if (e.target.closest('[class*="download"], [class*="reward"], [id*="download"], [id*="reward"]')) {
+            e.preventDefault(); // Prevent default action
+            e.stopPropagation(); // Stop event bubbling
+            setTimeout(() => closeAd(true), 1000);
+        }
+    }, true);
+
+    // Add mutation observer for dynamic elements
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            mutation.addedNodes.forEach((node) => {
+                if (node.nodeType === 1) {
+                    const downloadBtn = node.querySelector('[class*="download"], [class*="reward"]');
+                    if (downloadBtn) {
+                        downloadBtn.addEventListener('click', (e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            setTimeout(() => closeAd(true), 1000);
+                        });
+                    }
+                }
+            });
+        });
     });
 
-    // Update points
-    let currentPoints = parseFloat(localStorage.getItem('earnedPoints') || '0');
-    currentPoints += 0.5;
-    localStorage.setItem('earnedPoints', currentPoints.toString());
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
 
-    // Update watched ads count
-    let watchedAds = parseInt(localStorage.getItem('watchedAds') || '0');
-    watchedAds++;
-    localStorage.setItem('watchedAds', watchedAds.toString());
+function startTask(taskId) {
+    if (isAdPlaying) return;
+    
+    try {
+        isAdPlaying = true;
+        currentTaskId = taskId;
+        backButtonCount = 0;
+        
+        // Show ad
+        if (typeof show_8863238 === 'function') {
+            // Set up back button prevention
+            window.history.pushState({ noBackExitsApp: true }, '');
+            window.addEventListener('popstate', preventBack);
+            
+            show_8863238();
+            startAdCheck();
+        }
+    } catch (error) {
+        console.error('Error showing ad:', error);
+        resetAdState();
+    }
+}
 
-    // Update task progress
-    updateTaskProgress('watchAds', parseInt(localStorage.getItem('watchedAds')) || 0);
-    updateTaskProgress('watchTime', parseInt(localStorage.getItem('watchMinutes')) || 0);
-    updateTaskProgress('dailyTarget', parseInt(localStorage.getItem('watchMinutes')) || 0);
+function preventBack(e) {
+    e.preventDefault();
+    if (isAdPlaying) {
+        backButtonCount++;
+        if (backButtonCount <= 2) {
+            window.history.pushState({ noBackExitsApp: true }, '');
+        } else {
+            // After 3 back button presses, force close the ad
+            closeAd(false);
+        }
+    }
+}
 
+function startAdCheck() {
+    // Clear existing timers
+    clearTimers();
+    
+    // Set maximum duration
+    adTimeout = setTimeout(() => closeAd(false), 30000);
+    
+    // Add click handlers for download/reward buttons
+    const clickHandler = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        setTimeout(() => closeAd(true), 1000);
+    };
+    
+    // Check for ad elements periodically
+    adCheckInterval = setInterval(() => {
+        // Find and handle download/reward buttons
+        document.querySelectorAll(
+            '[class*="download"], [class*="reward"], [id*="download"], [id*="reward"]'
+        ).forEach(btn => {
+            btn.removeEventListener('click', clickHandler);
+            btn.addEventListener('click', clickHandler, { once: true });
+        });
+        
+        // Check if ad container is gone
+        const adContainer = document.querySelector('#container-8863238');
+        const monetagFrame = document.querySelector('iframe[src*="niphaumeenses.net"]');
+        
+        if ((!adContainer || !monetagFrame) && isAdPlaying) {
+            closeAd(true);
+        }
+    }, 500);
+}
+
+function closeAd(completed) {
+    if (!isAdPlaying) return;
+    
+    // Remove back button prevention
+    window.removeEventListener('popstate', preventBack);
+    
+    // Clear timers
+    clearTimers();
+    
+    // Remove all ad-related elements
+    const selectors = [
+        'iframe[src*="niphaumeenses.net"]',
+        '#container-8863238',
+        '[id*="monetag"]',
+        '[class*="monetag"]',
+        '[class*="download"]',
+        '[class*="reward"]',
+        '[style*="z-index: 99999"]',
+        '.ad-overlay'
+    ];
+    
+    selectors.forEach(selector => {
+        document.querySelectorAll(selector).forEach(el => {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        });
+    });
+    
+    // Clean up body styles
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    
+    // Remove overlay elements
+    document.querySelectorAll('div').forEach(el => {
+        const style = window.getComputedStyle(el);
+        if (
+            style.position === 'fixed' &&
+            (style.backgroundColor.includes('rgba') || parseFloat(style.opacity) < 1)
+        ) {
+            el.remove();
+        }
+    });
+    
+    // Update task progress if completed
+    if (completed && currentTaskId) {
+        updateTaskProgress(currentTaskId);
+    }
+    
+    resetAdState();
+}
+
+function resetAdState() {
+    isAdPlaying = false;
+    currentTaskId = null;
+    backButtonCount = 0;
+    clearTimers();
+}
+
+function clearTimers() {
+    if (adCheckInterval) {
+        clearInterval(adCheckInterval);
+        adCheckInterval = null;
+    }
+    if (adTimeout) {
+        clearTimeout(adTimeout);
+        adTimeout = null;
+    }
+}
+
+function updateTaskProgress(taskId) {
+    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+    if (!taskElement) return;
+    
+    const progressBar = taskElement.querySelector('.progress-bar');
+    const progressText = taskElement.querySelector('.progress-text');
+    
+    // Get current progress
+    let progress = parseInt(progressBar?.style?.width) || 0;
+    progress = Math.min(progress + 20, 100); // Increment by 20% (5 ads to complete)
+    
     // Update UI
-    updateTasksUI();
+    progressBar.style.width = `${progress}%`;
+    progressText.textContent = `${progress}%`;
+    
+    if (progress >= 100 && !taskElement.classList.contains('completed')) {
+        taskElement.classList.add('completed');
+        
+        // Show completion message
+        tg.showPopup({
+            title: 'Task Completed! 🎉',
+            message: 'Congratulations! You earned bonus points!',
+            buttons: [{type: 'ok'}]
+        });
+    }
+    
+    // Save progress
+    saveProgress(taskId, progress);
 }
 
-function startAutoAds() {
-    if (isAutoAdRunning) return;
-    
-    isAutoAdRunning = true;
-    document.getElementById('auto-ad-btn').classList.add('hidden');
-    document.getElementById('stop-auto-btn').classList.remove('hidden');
-    
-    // Start watching ads automatically
-    autoAdInterval = setInterval(() => {
-        watchAd();
-        
-        // Update watch time
-        let watchMinutes = parseInt(localStorage.getItem('watchMinutes') || '0');
-        watchMinutes++;
-        localStorage.setItem('watchMinutes', watchMinutes.toString());
-        
-        // Update task progress
-        updateTaskProgress('watchTime', watchMinutes);
-        updateTaskProgress('dailyTarget', watchMinutes);
-    }, 60000); // Run every minute
-    
-    // Watch first ad immediately
-    watchAd();
+function saveProgress(taskId, progress) {
+    const savedProgress = JSON.parse(localStorage.getItem('taskProgress') || '{}');
+    savedProgress[taskId] = progress;
+    localStorage.setItem('taskProgress', JSON.stringify(savedProgress));
 }
 
-function stopAutoAds() {
-    if (!isAutoAdRunning) return;
+function loadProgress() {
+    const savedProgress = JSON.parse(localStorage.getItem('taskProgress') || '{}');
     
-    isAutoAdRunning = false;
-    clearInterval(autoAdInterval);
-    document.getElementById('auto-ad-btn').classList.remove('hidden');
-    document.getElementById('stop-auto-btn').classList.add('hidden');
+    Object.entries(savedProgress).forEach(([taskId, progress]) => {
+        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
+        if (taskElement) {
+            const progressBar = taskElement.querySelector('.progress-bar');
+            const progressText = taskElement.querySelector('.progress-text');
+            
+            progressBar.style.width = `${progress}%`;
+            progressText.textContent = `${progress}%`;
+            
+            if (progress >= 100) {
+                taskElement.classList.add('completed');
+            }
+        }
+    });
 }
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
+    tg.ready();
+    tg.expand();
+    
+    // Set user info
+    const username = tg.initDataUnsafe.user?.username || 'User';
+    document.getElementById('header-user-name').textContent = username;
+    
+    // Add click handlers to task items
+    document.querySelectorAll('.task-item').forEach(task => {
+        const taskDiv = task.querySelector('div');
+        taskDiv.addEventListener('click', () => {
+            const taskId = task.dataset.taskId;
+            if (taskId) startTask(taskId);
+        });
+    });
+    
+    // Load saved progress
+    loadProgress();
+    
+    // Load tasks
     loadTasks();
     checkTaskReset();
     updateTasksUI();
@@ -253,58 +445,3 @@ window.addEventListener('storage', (e) => {
         updateTasksUI();
     }
 });
-
-// Function to close ad iframe/window
-function closeAd() {
-    const adFrame = document.querySelector('.monetag-ad');
-    if (adFrame) {
-        adFrame.remove();
-    }
-    
-    // If there's any overlay, remove it
-    const overlay = document.querySelector('.ad-overlay');
-    if (overlay) {
-        overlay.remove();
-    }
-
-    // Force cleanup of any remaining ad elements
-    const adElements = document.querySelectorAll('[id*="monetag"],[class*="monetag"]');
-    adElements.forEach(el => el.remove());
-}
-
-// Show ad with auto-close functionality
-function showAd() {
-    show_8863238();
-    
-    // Set a fallback timer to close the ad after maximum duration (e.g., 30 seconds)
-    setTimeout(() => {
-        closeAd();
-    }, 30000);
-}
-
-// Update task element click handler to use showAd function
-function createTaskElement(task) {
-    const progress = Math.min((task.current / task.target) * 100, 100);
-    return `
-        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onclick="showAd()">
-            <div class="flex items-center justify-between mb-2">
-                <div class="flex items-center gap-3">
-                    <div class="w-10 h-10 rounded-xl bg-${task.iconBg}-500/20 flex items-center justify-center">
-                        ${task.icon}
-                    </div>
-                    <div>
-                        <h4 class="font-medium text-white">${task.title}</h4>
-                        <p class="text-xs text-gray-400">${task.description}</p>
-                    </div>
-                </div>
-                <div class="text-right">
-                    <p class="text-sm font-medium text-${task.iconBg}-400">+${task.reward} points</p>
-                    <p class="text-xs text-gray-400 mt-1">Progress: ${task.current}/${task.target}</p>
-                </div>
-            </div>
-            <div class="w-full bg-gray-700/50 rounded-full h-2 mt-2">
-                <div class="bg-${task.iconBg}-500 h-2 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
-            </div>
-        </div>
-    `;
-}

@@ -14,20 +14,241 @@ let user = {
     lastWatchTime: null
 };
 
+// Initialize ad handling
+let adCheckInterval = null;
+let adTimeout = null;
+let isAdPlaying = false;
 
-show_8863238();
+function initAdHandling() {
+    // Listen for clicks on ad elements
+    document.addEventListener('click', function(e) {
+        const downloadBtn = e.target.closest('[class*="download"], [class*="reward"], [id*="download"], [id*="reward"]');
+        if (downloadBtn) {
+            setTimeout(closeAd, 1000); // Close ad after reward click
+        }
+    }, true);
 
+    // Add mutation observer to detect ad changes
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                mutation.addedNodes.forEach((node) => {
+                    if (node.nodeType === 1) { // Element node
+                        // Check if it's a download/reward button
+                        if (node.className && (
+                            node.className.includes('download') || 
+                            node.className.includes('reward')
+                        )) {
+                            // Add click handler
+                            node.addEventListener('click', () => {
+                                setTimeout(closeAd, 1000);
+                            });
+                        }
+                    }
+                });
+            }
+        });
+    });
 
- 
+    // Start observing
+    observer.observe(document.body, {
+        childList: true,
+        subtree: true
+    });
+}
+
+function watchAd() {
+    if (isAdPlaying) return;
+    isAdPlaying = true;
+    
+    try {
+        if (typeof show_8863238 === 'function') {
+            show_8863238();
+            startAdCheck();
+            
+            // Update stats immediately
+            user.lastAdTime = Date.now();
+            user.lastWatchTime = Date.now();
+            saveUserData();
+        } else {
+            tg.showPopup({
+                title: 'Error',
+                message: 'Ad service is temporarily unavailable. Please try again later.',
+                buttons: [{type: 'ok'}]
+            });
+        }
+    } catch (error) {
+        console.error('Error showing ad:', error);
+        isAdPlaying = false;
+    }
+}
+
+function startAdCheck() {
+    // Clear existing timers
+    clearTimers();
+    
+    // Set maximum duration
+    adTimeout = setTimeout(closeAd, 30000);
+    
+    // Check for ad elements periodically
+    adCheckInterval = setInterval(() => {
+        // Check for download/reward buttons
+        const buttons = document.querySelectorAll(
+            '[class*="download"], [class*="reward"], [id*="download"], [id*="reward"]'
+        );
+        
+        buttons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                setTimeout(closeAd, 1000);
+            });
+        });
+        
+        // Check if ad container is gone
+        const adContainer = document.querySelector('#container-8863238');
+        if (!adContainer) {
+            closeAd();
+        }
+    }, 500);
+}
+
+function closeAd() {
+    if (!isAdPlaying) return;
+    
+    clearTimers();
+    
+    // Remove all ad-related elements
+    const selectors = [
+        'iframe[src*="niphaumeenses.net"]',
+        '#container-8863238',
+        '[id*="monetag"]',
+        '[class*="monetag"]',
+        '[class*="download"]',
+        '[class*="reward"]',
+        '[style*="z-index: 99999"]',
+        '.ad-overlay'
+    ];
+    
+    selectors.forEach(selector => {
+        document.querySelectorAll(selector).forEach(el => {
+            if (el && el.parentNode) {
+                el.parentNode.removeChild(el);
+            }
+        });
+    });
+    
+    // Clean up body styles
+    document.body.style.overflow = '';
+    document.body.style.position = '';
+    
+    // Remove overlay elements
+    document.querySelectorAll('div').forEach(el => {
+        const style = window.getComputedStyle(el);
+        if (
+            style.position === 'fixed' &&
+            (style.backgroundColor.includes('rgba') || parseFloat(style.opacity) < 1)
+        ) {
+            el.remove();
+        }
+    });
+    
+    // Reset state
+    isAdPlaying = false;
+    
+    // Update progress
+    updateProgress();
+}
+
+function clearTimers() {
+    if (adCheckInterval) {
+        clearInterval(adCheckInterval);
+        adCheckInterval = null;
+    }
+    if (adTimeout) {
+        clearTimeout(adTimeout);
+        adTimeout = null;
+    }
+}
+
+function updateProgress() {
+    // Update watched ads count
+    const watchedAds = document.getElementById('watched-ads');
+    const earnedPoints = document.getElementById('earned-points');
+    const progressElement = document.getElementById('ads-progress');
+    const progressBar = document.getElementById('progress-bar');
+    
+    let watched = parseInt(watchedAds.textContent) || 0;
+    watched++;
+    watchedAds.textContent = watched;
+    
+    // Update points
+    let points = parseFloat(earnedPoints.textContent) || 0;
+    points += 0.5;
+    earnedPoints.textContent = points.toFixed(2);
+    
+    // Update progress
+    const progress = Math.min((watched / 200) * 100, 100);
+    progressElement.textContent = Math.round(progress) + '%';
+    if (progressBar) {
+        progressBar.style.width = progress + '%';
+    }
+    
+    // Update daily limit
+    const dailyLimit = document.getElementById('daily-limit');
+    const remaining = 200 - watched;
+    dailyLimit.textContent = `${remaining} ads left today`;
+    
+    // Save data
+    user.watchedAds = watched;
+    user.earnedPoints = points;
+    saveUserData();
+}
+
+function saveUserData() {
+    localStorage.setItem('userData', JSON.stringify(user));
+}
+
+function loadUserData() {
+    const savedData = localStorage.getItem('userData');
+    if (savedData) {
+        const data = JSON.parse(savedData);
+        user.watchedAds = data.watchedAds || 0;
+        user.earnedPoints = data.earnedPoints || 0;
+        user.lastWatchTime = data.lastWatchTime;
+    }
+}
+
+function checkDailyReset() {
+    const now = new Date();
+    const lastWatch = user.lastWatchTime ? new Date(user.lastWatchTime) : null;
+    
+    if (lastWatch) {
+        const isNewDay = now.getDate() !== lastWatch.getDate() ||
+                        now.getMonth() !== lastWatch.getMonth() ||
+                        now.getFullYear() !== lastWatch.getFullYear();
+        
+        if (isNewDay) {
+            user.watchedAds = 0;
+            user.lastWatchTime = now.toISOString();
+            saveUserData();
+        }
+    } else {
+        user.lastWatchTime = now.toISOString();
+        saveUserData();
+    }
+}
+
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     tg.ready();
     tg.expand();
-
+    
     // Set user info
-    const username = tg.initDataUnsafe.user?.username || 'User';
+    const username = tg.initDataUnsafe.user.username || 'User';
     document.getElementById('header-user-name').textContent = username;
     document.getElementById('user-name').textContent = username;
+    
+    // Initialize ad handling
+    initAdHandling();
     
     // Load saved data
     loadUserData();
@@ -36,48 +257,6 @@ document.addEventListener('DOMContentLoaded', () => {
     populateTasks();
     startWatchTimeTracking();
 });
-
-// Save and load user data
-function saveUserData() {
-    localStorage.setItem('userData', JSON.stringify(user));
-}
-
-function loadUserData() {
-    const savedData = localStorage.getItem('userData');
-    if (savedData) {
-        const parsedData = JSON.parse(savedData);
-        user = {
-            ...user,
-            ...parsedData,
-            tasks: {
-                ...user.tasks,
-                ...(parsedData.tasks || {})
-            }
-        };
-    }
-}
-
-// Check daily reset
-function checkDailyReset() {
-    const lastReset = localStorage.getItem('lastReset');
-    const now = new Date();
-    const today = now.toDateString();
-
-    if (lastReset !== today) {
-        user.dailyLimit = 200;
-        user.watchedAds = 0;
-        user.watchTime = 0;
-        user.tasks = {
-            watchAds: { current: 0, target: 5, reward: 2.5, completed: false },
-            dailyTarget: { current: 0, target: 60, reward: 5, completed: false },
-            watchTime: { current: 0, target: 30, reward: 3, completed: false }
-        };
-        user.lastTaskReset = today;
-        user.lastWatchTime = null;
-        localStorage.setItem('lastReset', today);
-        saveUserData();
-    }
-}
 
 // Update UI
 function updateUI() {
@@ -173,91 +352,6 @@ function populateTasks() {
     });
 }
 
-// Watch Ad
-function watchAd() {
-    if (user.dailyLimit <= 0) {
-        tg.showPopup({
-            title: 'Daily Limit Reached',
-            message: 'You have reached your daily limit. Come back tomorrow!',
-            buttons: [{type: 'ok'}]
-        });
-        return;
-    }
-
-    // Check cooldown
-    if (user.lastAdTime) {
-        const now = new Date().getTime();
-        const timeSinceLastAd = now - user.lastAdTime;
-        if (timeSinceLastAd < 30000) { // 30 seconds cooldown
-            const remainingTime = Math.ceil((30000 - timeSinceLastAd) / 1000);
-            tg.showPopup({
-                title: 'Please Wait',
-                message: `Wait ${remainingTime} seconds before watching next ad`,
-                buttons: [{type: 'ok'}]
-            });
-            return;
-        }
-    }
-
-    // Show ad
-    try {
-        if (typeof show_8863238 === 'function') {
-            show_8863238();
-            
-            // Update stats
-            user.watchedAds++;
-            user.dailyLimit--;
-            user.earnedPoints += 0.5;
-            user.lastAdTime = new Date().getTime();
-            user.lastWatchTime = new Date().getTime();
-            
-            // Update watch ads task
-            if (!user.tasks.watchAds.completed) {
-                user.tasks.watchAds.current = Math.min(user.tasks.watchAds.current + 1, user.tasks.watchAds.target);
-                if (user.tasks.watchAds.current >= user.tasks.watchAds.target) {
-                    completeTask('watchAds');
-                }
-            }
-            
-            saveUserData();
-            updateUI();
-            populateTasks();
-        } else {
-            tg.showPopup({
-                title: 'Error',
-                message: 'Ad service is temporarily unavailable. Please try again later.',
-                buttons: [{type: 'ok'}]
-            });
-        }
-    } catch (error) {
-        console.error('Error showing ad:', error);
-        tg.showPopup({
-            title: 'Error',
-            message: 'Failed to load ad. Please try again.',
-            buttons: [{type: 'ok'}]
-        });
-    }
-}
-
-// Complete task
-function completeTask(taskId) {
-    if (user.tasks[taskId] && !user.tasks[taskId].completed) {
-        user.tasks[taskId].completed = true;
-        user.earnedPoints += user.tasks[taskId].reward;
-        
-        tg.showPopup({
-            title: 'Task Completed! 🎉',
-            message: `Congratulations! You earned +${user.tasks[taskId].reward} points!`,
-            buttons: [{type: 'ok'}]
-        });
-        
-        saveUserData();
-        updateUI();
-        populateTasks();
-    }
-}
-
-// Start watch time tracking
 function startWatchTimeTracking() {
     setInterval(() => {
         const now = new Date().getTime();
@@ -286,4 +380,21 @@ function startWatchTimeTracking() {
             populateTasks();
         }
     }, 60000); // Check every minute
+}
+
+function completeTask(taskId) {
+    if (user.tasks[taskId] && !user.tasks[taskId].completed) {
+        user.tasks[taskId].completed = true;
+        user.earnedPoints += user.tasks[taskId].reward;
+        
+        tg.showPopup({
+            title: 'Task Completed! 🎉',
+            message: `Congratulations! You earned +${user.tasks[taskId].reward} points!`,
+            buttons: [{type: 'ok'}]
+        });
+        
+        saveUserData();
+        updateUI();
+        populateTasks();
+    }
 }
