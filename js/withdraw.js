@@ -1,8 +1,4 @@
 let tg = window.Telegram.WebApp;
-let user = {
-    earnedPoints: 0.00,
-    withdrawals: []
-};
 
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,11 +8,20 @@ document.addEventListener('DOMContentLoaded', () => {
     // Set user info
     document.getElementById('header-user-name').textContent = tg.initDataUnsafe.user?.username || 'User';
     
-    // Load saved data
-    loadUserData();
+    // Update UI with current points
     updateUI();
 
     // Setup payment dropdown
+    setupPaymentDropdown();
+});
+
+// Update UI
+function updateUI() {
+    document.getElementById('available-points').textContent = StorageManager.getPoints().toFixed(2);
+}
+
+// Setup payment dropdown
+function setupPaymentDropdown() {
     const dropdownBtn = document.getElementById('payment-dropdown-btn');
     const dropdown = document.getElementById('payment-dropdown');
     
@@ -34,7 +39,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Show default payment fields
     document.getElementById('binance-fields').classList.remove('hidden');
-});
+}
 
 // Payment selection function
 function selectPayment(method) {
@@ -94,112 +99,100 @@ function selectPayment(method) {
     dropdown.classList.add('hidden');
 }
 
-// Save and load user data
-function saveUserData() {
-    localStorage.setItem('userData', JSON.stringify(user));
-}
-
-function loadUserData() {
-    const savedData = localStorage.getItem('userData');
-    if (savedData) {
-        user = { ...user, ...JSON.parse(savedData) };
-    }
-}
-
-// Update UI
-function updateUI() {
-    document.getElementById('available-points').textContent = user.earnedPoints.toFixed(2);
-}
-
 // Withdraw points
-function withdrawPoints() {
+function withdraw() {
     const amount = parseFloat(document.getElementById('withdraw-amount').value);
-    const paymentMethod = document.querySelector('input[name="payment"]:checked').value;
-    
-    // Validate amount
-    if (!amount || amount < 10) {
-        showError('Minimum withdrawal amount is 10 points');
+    if (!amount || amount < 1) {
+        showError('Minimum withdrawal amount is 1 point');
         return;
     }
     
-    if (amount > user.earnedPoints) {
+    if (amount > StorageManager.getPoints()) {
         showError('Insufficient balance');
         return;
     }
-
-    let withdrawalInfo = '';
-    let isValid = true;
-
-    // Get payment details based on method
+    
+    // Get selected payment method
+    const paymentMethod = document.querySelector('input[name="payment-method"]:checked')?.value;
+    if (!paymentMethod) {
+        showError('Please select a payment method');
+        return;
+    }
+    
+    // Get withdrawal info based on payment method
+    let withdrawalInfo = {};
     switch(paymentMethod) {
         case 'binance':
-            const binanceUid = document.getElementById('binance-uid').value;
-            if (!binanceUid) {
-                showError('Please enter your Binance UID');
-                isValid = false;
-            } else {
-                withdrawalInfo = `Binance UID: ${binanceUid}`;
+            withdrawalInfo.address = document.getElementById('binance-address').value;
+            if (!withdrawalInfo.address) {
+                showError('Please enter your Binance address');
+                return;
             }
             break;
-
+            
         case 'bkash':
         case 'nagad':
-            const phoneNumber = document.getElementById('phone-number').value;
-            if (!phoneNumber || !/^1\d{9}$/.test(phoneNumber)) {
-                showError('Please enter a valid phone number starting with 1');
-                isValid = false;
-            } else {
-                withdrawalInfo = `${paymentMethod.toUpperCase()}\nPhone: +880${phoneNumber}`;
+            withdrawalInfo.number = document.getElementById('mobile-number').value;
+            if (!withdrawalInfo.number) {
+                showError('Please enter your mobile number');
+                return;
             }
             break;
-
+            
         case 'xrocket':
-            const username = document.getElementById('telegram-username').value;
-            if (!username) {
-                showError('Please enter your Telegram username');
-                isValid = false;
-            } else {
-                withdrawalInfo = `Xrocket Bot Payment\nTelegram: @${username}`;
+            withdrawalInfo.username = document.getElementById('xrocket-username').value;
+            if (!withdrawalInfo.username) {
+                showError('Please enter your Xrocket username');
+                return;
             }
             break;
-
+            
         case 'coinbase':
-            const email = document.getElementById('coinbase-email').value;
-            if (!email || !email.includes('@')) {
-                showError('Please enter a valid Coinbase email');
-                isValid = false;
-            } else {
-                withdrawalInfo = `Coinbase Payment\nEmail: ${email}`;
+            withdrawalInfo.email = document.getElementById('coinbase-email').value;
+            if (!withdrawalInfo.email) {
+                showError('Please enter your Coinbase email');
+                return;
             }
             break;
     }
-
-    if (!isValid) return;
-
-    // Prepare withdrawal message
-    const message = `💰 Withdrawal Request\n\n` +
-                   `Amount: ${amount} Points\n` +
-                   `${withdrawalInfo}\n\n` +
-                   `User: @${tg.initDataUnsafe.user.username}`;
-
-    // Send withdrawal request
+    
+    // Prepare withdrawal data
+    const withdrawal = {
+        amount: amount,
+        method: paymentMethod,
+        details: withdrawalInfo
+    };
+    
+    // Send withdrawal request to bot
+    const message = JSON.stringify({
+        type: 'withdraw',
+        data: withdrawal
+    });
     tg.sendData(message);
     
     // Update local data
-    user.earnedPoints -= amount;
-    user.withdrawals.push({
-        amount: amount,
-        method: paymentMethod,
-        details: withdrawalInfo,
-        status: 'pending',
-        date: new Date().toISOString()
-    });
+    StorageManager.addPoints(-amount);
+    StorageManager.addWithdrawal(withdrawal);
     
-    // Save and update UI
-    saveUserData();
+    // Update UI
     updateUI();
+    
+    // Show success message
+    tg.showPopup({
+        title: 'Withdrawal Requested',
+        message: `Your withdrawal request for ${amount} points has been submitted.`,
+        buttons: [{type: 'ok'}]
+    });
 }
 
+// Listen for storage changes
+window.addEventListener('storage', (e) => {
+    if (e.key === 'earnedPoints') {
+        updateUI();
+    }
+});
+
+// Show error message
 function showError(message) {
     tg.showPopup({
         title: 'Error',

@@ -43,22 +43,19 @@ const tasks = {
     }
 };
 
-// Load tasks from localStorage
+// Load tasks from StorageManager
 function loadTasks() {
-    const savedTasks = localStorage.getItem('tasks');
-    if (savedTasks) {
-        const parsedTasks = JSON.parse(savedTasks);
-        for (const taskId in parsedTasks) {
-            if (tasks[taskId]) {
-                tasks[taskId] = { ...tasks[taskId], ...parsedTasks[taskId] };
-            }
+    const savedTasks = StorageManager.getTasks();
+    Object.keys(savedTasks).forEach(taskId => {
+        if (tasks[taskId]) {
+            tasks[taskId] = { ...tasks[taskId], ...savedTasks[taskId] };
         }
-    }
+    });
 }
 
-// Save tasks to localStorage
+// Save tasks to StorageManager
 function saveTasks() {
-    localStorage.setItem('tasks', JSON.stringify(tasks));
+    StorageManager.setTasks(tasks);
 }
 
 // Update task progress
@@ -68,13 +65,25 @@ function updateTaskProgress(taskId, progress) {
         if (progress >= tasks[taskId].target && !tasks[taskId].completed) {
             tasks[taskId].completed = true;
             // Add reward points
-            let currentPoints = parseFloat(localStorage.getItem('earnedPoints') || '0');
-            currentPoints += tasks[taskId].reward;
-            localStorage.setItem('earnedPoints', currentPoints.toString());
+            const newPoints = StorageManager.addPoints(tasks[taskId].reward);
             // Show notification
             showNotification('Task Completed!', `+${tasks[taskId].reward} points earned`);
         }
         saveTasks();
+        updateTasksUI();
+    }
+}
+
+// Update UI with current points
+function updatePoints() {
+    const totalPoints = document.getElementById('total-points');
+    totalPoints.textContent = StorageManager.getPoints().toFixed(2);
+}
+
+// Check if tasks should be reset
+function checkTaskReset() {
+    if (StorageManager.shouldReset()) {
+        StorageManager.resetTasks(tasks);
         updateTasksUI();
     }
 }
@@ -121,8 +130,10 @@ function updateTasksUI() {
     }
     
     // Update stats
-    const earnedPoints = parseFloat(localStorage.getItem('earnedPoints') || '0').toFixed(2);
-    totalPoints.textContent = earnedPoints;
+    updatePoints();
+    
+    const earnedPoints = StorageManager.getPoints();
+    totalPoints.textContent = earnedPoints.toFixed(2);
     
     const completed = Object.values(tasks).filter(task => task.completed).length;
     const total = Object.keys(tasks).length;
@@ -134,13 +145,29 @@ function updateResetTime() {
     const now = new Date();
     const tomorrow = new Date(now);
     tomorrow.setHours(24, 0, 0, 0);
-    const timeUntilReset = tomorrow - now;
-    
-    const hours = Math.floor(timeUntilReset / (1000 * 60 * 60));
-    const minutes = Math.floor((timeUntilReset % (1000 * 60 * 60)) / (1000 * 60));
-    
-    const refreshTimeElement = document.getElementById('task-refresh-time');
-    refreshTimeElement.textContent = `${hours}h ${minutes}m`;
+    const timeLeft = tomorrow - now;
+
+    const hours = Math.floor(timeLeft / (1000 * 60 * 60));
+    const minutes = Math.floor((timeLeft % (1000 * 60 * 60)) / (1000 * 60));
+    const seconds = Math.floor((timeLeft % (1000 * 60)) / 1000);
+
+    const resetTimeElement = document.getElementById('task-refresh-time');
+    if (resetTimeElement) {
+        resetTimeElement.textContent = `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${seconds.toString().padStart(2, '0')}`;
+    }
+
+    // Reset tasks if it's a new day
+    if (hours === 23 && minutes === 59 && seconds === 59) {
+        setTimeout(() => {
+            Object.keys(tasks).forEach(taskId => {
+                tasks[taskId].current = 0;
+                tasks[taskId].completed = false;
+            });
+            saveTasks();
+            updateTasksUI();
+            alert('Tasks Reset', 'Daily tasks have been reset!');
+        }, 1000);
+    }
 }
 
 // Show notification
@@ -150,23 +177,6 @@ function showNotification(title, message) {
         message: message,
         buttons: [{type: 'ok'}]
     });
-}
-
-// Check if tasks should be reset
-function checkTaskReset() {
-    const lastReset = localStorage.getItem('lastTaskReset');
-    const now = new Date();
-    const today = now.toDateString();
-    
-    if (lastReset !== today) {
-        // Reset all tasks
-        for (const taskId in tasks) {
-            tasks[taskId].current = 0;
-            tasks[taskId].completed = false;
-        }
-        saveTasks();
-        localStorage.setItem('lastTaskReset', today);
-    }
 }
 
 // Global variables for ad handling
@@ -218,66 +228,50 @@ function startTask(taskId) {
         currentTaskId = taskId;
         backButtonCount = 0;
         
-        // Show ad
-        if (typeof show_8863238 === 'function') {
-            // Set up back button prevention
-            window.history.pushState({ noBackExitsApp: true }, '');
-            window.addEventListener('popstate', preventBack);
-            
-            show_8863238();
-            startAdCheck();
-        }
+        // Prevent back button
+        window.history.pushState({}, '');
+        window.addEventListener('popstate', preventBack);
+        
+        // Start monitoring ad state
+        startAdCheck();
+        
     } catch (error) {
-        console.error('Error showing ad:', error);
+        console.error('Error starting task:', error);
         resetAdState();
     }
 }
 
 function preventBack(e) {
-    e.preventDefault();
     if (isAdPlaying) {
+        e.preventDefault();
+        window.history.pushState({}, '');
         backButtonCount++;
-        if (backButtonCount <= 2) {
-            window.history.pushState({ noBackExitsApp: true }, '');
-        } else {
-            // After 3 back button presses, force close the ad
+        
+        if (backButtonCount >= 3) {
             closeAd(false);
         }
     }
 }
 
 function startAdCheck() {
-    // Clear existing timers
-    clearTimers();
+    if (adCheckInterval) clearInterval(adCheckInterval);
+    if (adTimeout) clearTimeout(adTimeout);
     
-    // Set maximum duration
-    adTimeout = setTimeout(() => closeAd(false), 30000);
+    // Set timeout for ad completion
+    adTimeout = setTimeout(() => {
+        closeAd(false);
+    }, 300000); // 5 minutes max
     
-    // Add click handlers for download/reward buttons
-    const clickHandler = function(e) {
-        e.preventDefault();
-        e.stopPropagation();
-        setTimeout(() => closeAd(true), 1000);
-    };
-    
-    // Check for ad elements periodically
+    // Check ad state periodically
     adCheckInterval = setInterval(() => {
-        // Find and handle download/reward buttons
-        document.querySelectorAll(
-            '[class*="download"], [class*="reward"], [id*="download"], [id*="reward"]'
-        ).forEach(btn => {
-            btn.removeEventListener('click', clickHandler);
-            btn.addEventListener('click', clickHandler, { once: true });
-        });
+        const adElements = document.querySelectorAll(
+            'iframe[src*="niphaumeenses.net"], #container-8863238, [id*="monetag"], [class*="monetag"]'
+        );
         
-        // Check if ad container is gone
-        const adContainer = document.querySelector('#container-8863238');
-        const monetagFrame = document.querySelector('iframe[src*="niphaumeenses.net"]');
-        
-        if ((!adContainer || !monetagFrame) && isAdPlaying) {
+        if (adElements.length === 0 && isAdPlaying) {
             closeAd(true);
         }
-    }, 500);
+    }, 1000);
 }
 
 function closeAd(completed) {
@@ -326,7 +320,25 @@ function closeAd(completed) {
     
     // Update task progress if completed
     if (completed && currentTaskId) {
-        updateTaskProgress(currentTaskId);
+        const task = tasks[currentTaskId];
+        if (task) {
+            task.current = Math.min(task.current + 1, task.target);
+            task.completed = task.current >= task.target;
+            
+            if (task.completed) {
+                alert('Task Complete!', `You've completed the ${task.title} task!`);
+            } else {
+                show_8876485().then(() => {
+                    // Add points and update UI
+                    const pointsEarned = 0.5; // Earn 0.5 points per ad view
+                    StorageManager.addPoints(pointsEarned);
+                    saveTasks();
+                    updateTasksUI();
+                    updatePoints();
+                    alert('Points Earned!', `You earned ${pointsEarned} points! Total: ${StorageManager.getPoints().toFixed(2)}`);
+                })
+            }
+        }
     }
     
     resetAdState();
@@ -350,61 +362,6 @@ function clearTimers() {
     }
 }
 
-function updateTaskProgress(taskId) {
-    const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
-    if (!taskElement) return;
-    
-    const progressBar = taskElement.querySelector('.progress-bar');
-    const progressText = taskElement.querySelector('.progress-text');
-    
-    // Get current progress
-    let progress = parseInt(progressBar?.style?.width) || 0;
-    progress = Math.min(progress + 20, 100); // Increment by 20% (5 ads to complete)
-    
-    // Update UI
-    progressBar.style.width = `${progress}%`;
-    progressText.textContent = `${progress}%`;
-    
-    if (progress >= 100 && !taskElement.classList.contains('completed')) {
-        taskElement.classList.add('completed');
-        
-        // Show completion message
-        tg.showPopup({
-            title: 'Task Completed! 🎉',
-            message: 'Congratulations! You earned bonus points!',
-            buttons: [{type: 'ok'}]
-        });
-    }
-    
-    // Save progress
-    saveProgress(taskId, progress);
-}
-
-function saveProgress(taskId, progress) {
-    const savedProgress = JSON.parse(localStorage.getItem('taskProgress') || '{}');
-    savedProgress[taskId] = progress;
-    localStorage.setItem('taskProgress', JSON.stringify(savedProgress));
-}
-
-function loadProgress() {
-    const savedProgress = JSON.parse(localStorage.getItem('taskProgress') || '{}');
-    
-    Object.entries(savedProgress).forEach(([taskId, progress]) => {
-        const taskElement = document.querySelector(`[data-task-id="${taskId}"]`);
-        if (taskElement) {
-            const progressBar = taskElement.querySelector('.progress-bar');
-            const progressText = taskElement.querySelector('.progress-text');
-            
-            progressBar.style.width = `${progress}%`;
-            progressText.textContent = `${progress}%`;
-            
-            if (progress >= 100) {
-                taskElement.classList.add('completed');
-            }
-        }
-    });
-}
-
 // Initialize
 document.addEventListener('DOMContentLoaded', () => {
     tg.ready();
@@ -414,7 +371,22 @@ document.addEventListener('DOMContentLoaded', () => {
     const username = tg.initDataUnsafe.user?.username || 'User';
     document.getElementById('header-user-name').textContent = username;
     
-    // Add click handlers to task items
+    // Load saved data
+    loadTasks();
+    updatePoints();
+    
+    // Check for reset
+    checkTaskReset();
+    updateTasksUI();
+    
+    // Initialize ad handling
+    initAdHandling();
+    
+    // Update countdown
+    updateResetTime();
+    setInterval(updateResetTime, 1000);
+    
+    // Add click handlers
     document.querySelectorAll('.task-item').forEach(task => {
         const taskDiv = task.querySelector('div');
         taskDiv.addEventListener('click', () => {
@@ -422,26 +394,14 @@ document.addEventListener('DOMContentLoaded', () => {
             if (taskId) startTask(taskId);
         });
     });
-    
-    // Load saved progress
-    loadProgress();
-    
-    // Load tasks
-    loadTasks();
-    checkTaskReset();
-    updateTasksUI();
-    updateResetTime();
-    
-    // Update reset time every minute
-    setInterval(updateResetTime, 60000);
 });
 
-// Listen for task updates from other pages
+// Listen for storage changes
 window.addEventListener('storage', (e) => {
     if (e.key === 'tasks') {
         loadTasks();
         updateTasksUI();
     } else if (e.key === 'earnedPoints') {
-        updateTasksUI();
+        updatePoints();
     }
 });

@@ -27,8 +27,8 @@ document.addEventListener('DOMContentLoaded', () => {
     tg.expand();
 
     // Set user info
-    document.getElementById('header-user-name').textContent = tg.initDataUnsafe.user.username || 'User';
-    document.getElementById('user-name').textContent = tg.initDataUnsafe.user.username || 'User';
+    document.getElementById('header-user-name').textContent = tg.initDataUnsafe.user?.username || 'User';
+    document.getElementById('user-name').textContent = tg.initDataUnsafe.user?.username || 'User';
     
     // Load saved data
     loadUserData();
