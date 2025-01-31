@@ -1,0 +1,193 @@
+ /* Animations */
+.fade-in {
+    animation: fadeIn 0.3s ease-in;
+}
+
+.fade-out {
+    animation: fadeOut 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    from { opacity: 1; transform: translateY(0); }
+    to { opacity: 0; transform: translateY(-10px); }
+}
+
+/* Progress Circle */
+.progress-circle {
+    position: relative;
+    overflow: hidden;
+    background: linear-gradient(45deg, rgba(34, 197, 94, 0.1), rgba(34, 197, 94, 0.2));
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 10px rgba(34, 197, 94, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(34, 197, 94, 0);
+    }
+}
+
+.progress-circle::before {
+    content: '';
+    position: absolute;
+    inset: 4px;
+    background: #1f1f1f;
+    border-radius: 50%;
+    z-index: 1;
+}
+
+.progress-circle span {
+    position: relative;
+    z-index: 2;
+}
+
+/* Slide Animations */
+.slide-in {
+    animation: slideIn 0.3s ease-out;
+}
+
+@keyframes slideIn {
+    from { transform: translateY(100%); }
+    to { transform: translateY(0); }
+}
+
+/* Backdrop Blur */
+.blur-backdrop {
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+}
+
+/* Base styles */
+body {
+    background: var(--tg-theme-bg-color, #000000);
+    color: var(--tg-theme-text-color, #ffffff);
+    background-attachment: fixed;
+}
+
+/* Button styles */
+button {
+    background-color: var(--tg-theme-button-color, #2ecc71);
+    color: var(--tg-theme-button-text-color, #ffffff);
+    transition: all 0.3s ease;
+}
+
+button:hover {
+    background-color: var(--tg-theme-button-color, #27ae60);
+}
+
+button:active {
+    transform: scale(0.98);
+}
+
+/* Modal Styles */
+#withdraw-modal, #history-modal {
+    max-height: 90vh;
+    margin: 1rem;
+    transition: all 0.3s ease-in-out;
+}
+
+#withdraw-section.active #withdraw-modal,
+#history-section.active #history-modal {
+    transform: scale(1);
+    opacity: 1;
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+    .mobile-full {
+        width: 100%;
+        height: auto;
+        border-radius: 0;
+        margin: -1rem;
+        width: calc(100% + 2rem);
+        padding: 1rem;
+    }
+
+    /* Adjust font sizes for mobile */
+    .text-xl {
+        font-size: 1.125rem;
+        line-height: 1.75rem;
+    }
+
+    .text-2xl {
+        font-size: 1.5rem;
+        line-height: 2rem;
+    }
+
+    /* Adjust padding and margins */
+    .p-6 {
+        padding: 1rem;
+    }
+
+    .space-y-4 > :not([hidden]) ~ :not([hidden]) {
+        margin-top: 0.75rem;
+    }
+
+    /* Make buttons more touch-friendly */
+    button {
+        min-height: 44px;
+    }
+
+    /* Adjust modal sizing */
+    .max-w-md {
+        max-width: 100%;
+        margin: 0.5rem;
+    }
+
+    /* Improve scrolling */
+    .overflow-y-auto {
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .container {
+        padding-bottom: 5rem;
+    }
+}
+
+/* Header styles */
+.header-shadow {
+    box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+    width: 6px;
+}
+
+::-webkit-scrollbar-track {
+    background: rgba(31, 41, 55, 0.5);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb {
+    background: rgba(34, 197, 94, 0.5);
+    border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(34, 197, 94, 0.7);
+}
+
+/* Prevent text selection */
+* {
+    -webkit-tap-highlight-color: transparent;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    user-select: none;
+}
+
+/* Allow text selection in inputs */
+input, textarea {
+    -webkit-user-select: text;
+    user-select: text;
+}
