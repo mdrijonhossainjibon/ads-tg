@@ -83,7 +83,7 @@ function updateTaskProgress(taskId, progress) {
 function createTaskElement(task) {
     const progress = Math.min((task.current / task.target) * 100, 100);
     return `
-        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onclick="watchAd()">
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onclick="show_8863238()">
             <div class="flex items-center justify-between mb-2">
                 <div class="flex items-center gap-3">
                     <div class="w-10 h-10 rounded-xl bg-${task.iconBg}-500/20 flex items-center justify-center">
@@ -253,3 +253,58 @@ window.addEventListener('storage', (e) => {
         updateTasksUI();
     }
 });
+
+// Function to close ad iframe/window
+function closeAd() {
+    const adFrame = document.querySelector('.monetag-ad');
+    if (adFrame) {
+        adFrame.remove();
+    }
+    
+    // If there's any overlay, remove it
+    const overlay = document.querySelector('.ad-overlay');
+    if (overlay) {
+        overlay.remove();
+    }
+
+    // Force cleanup of any remaining ad elements
+    const adElements = document.querySelectorAll('[id*="monetag"],[class*="monetag"]');
+    adElements.forEach(el => el.remove());
+}
+
+// Show ad with auto-close functionality
+function showAd() {
+    show_8863238();
+    
+    // Set a fallback timer to close the ad after maximum duration (e.g., 30 seconds)
+    setTimeout(() => {
+        closeAd();
+    }, 30000);
+}
+
+// Update task element click handler to use showAd function
+function createTaskElement(task) {
+    const progress = Math.min((task.current / task.target) * 100, 100);
+    return `
+        <div class="bg-gray-800/50 backdrop-blur-sm rounded-xl p-4 cursor-pointer hover:bg-gray-700/50 transition-colors" onclick="showAd()">
+            <div class="flex items-center justify-between mb-2">
+                <div class="flex items-center gap-3">
+                    <div class="w-10 h-10 rounded-xl bg-${task.iconBg}-500/20 flex items-center justify-center">
+                        ${task.icon}
+                    </div>
+                    <div>
+                        <h4 class="font-medium text-white">${task.title}</h4>
+                        <p class="text-xs text-gray-400">${task.description}</p>
+                    </div>
+                </div>
+                <div class="text-right">
+                    <p class="text-sm font-medium text-${task.iconBg}-400">+${task.reward} points</p>
+                    <p class="text-xs text-gray-400 mt-1">Progress: ${task.current}/${task.target}</p>
+                </div>
+            </div>
+            <div class="w-full bg-gray-700/50 rounded-full h-2 mt-2">
+                <div class="bg-${task.iconBg}-500 h-2 rounded-full transition-all duration-300" style="width: ${progress}%"></div>
+            </div>
+        </div>
+    `;
+}
